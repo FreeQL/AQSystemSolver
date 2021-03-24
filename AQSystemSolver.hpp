@@ -274,7 +274,7 @@ namespace AQSystemSolver {
                 if(combinationsHash.insert(newHash).second){
                     currentCombinationHash=newHash;
                     return true;
-                else {
+                } else {
                     return false;
                 }
             }
@@ -379,7 +379,6 @@ namespace AQSystemSolver {
                     currentCombinationHash^=hash;
                     solidsPresent.emplace(std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1));
                 } else {
-                    auto b=std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1);
                     solidsNotPresent.emplace(std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1));
                 }
             }

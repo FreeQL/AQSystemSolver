@@ -107,6 +107,34 @@ namespace SM_utils{
             flat_set(auto begin, auto end): vect(begin, end) {}
     };
 
+    template<typename T>
+    class copy_pointer {
+        private:
+            T* raw;
+        public:
+            T* get(){
+                return raw;
+            }
+            const T* get() const {
+                return raw;
+            }
+            copy_pointer(T* raw_) noexcept{
+                raw=raw_;
+            }
+            copy_pointer(const copy_pointer& rhs) noexcept(T(*raw)){
+                raw=new T(*rhs.raw);
+            }
+            copy_pointer(copy_pointer&& rhs) noexcept {
+                raw=rhs.raw;
+                rhs.raw=nullptr;
+            }
+            ~copy_pointer() noexcept {
+                if(raw){
+                    delete raw;
+                }
+            }
+    };
+
     template<typename T, typename Enable = std::void_t<>>
     struct is_pointer_fancy : std::false_type {};
     
