@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <queue>
 #include <optional>
+#include <memory>
 
 #include <Eigen/Dense>
 
@@ -30,24 +31,24 @@ namespace AQSystemSolver {
     template<typename MatrixType, typename VectorType, typename RowVectorType>
     class Tableau{
         public:
-            MatrixType coeffecients;
+            MatrixType coefficients;
             VectorType constants;
 
             Eigen::Index rows() const{
                 return constants.rows();
             }
             Eigen::Index cols() const{
-                return coeffecients.cols();
+                return coefficients.cols();
             }
             VectorType evalTerms(const RowVectorType& x) const{
-                MatrixType terms(coeffecients.rows(),coeffecients.cols());
-                for(Eigen::Index i=0; i<coeffecients.rows(); ++i){
-                    terms.row(i)=pow(x.array(), coeffecients.row(i).array());
+                MatrixType terms(coefficients.rows(),coefficients.cols());
+                for(Eigen::Index i=0; i<coefficients.rows(); ++i){
+                    terms.row(i)=pow(x.array(), coefficients.row(i).array());
                 }
                 return terms.rowwise().prod().array()*constants.array();
             }
             MatrixType evalAddends(VectorType speciesConcentrations) const{
-                return coeffecients.array().colwise()*speciesConcentrations.array();
+                return coefficients.array().colwise()*speciesConcentrations.array();
             }
             RowVectorType eval(const RowVectorType& x) const{
                 return evalAddends(evalTerms(x)).colwise().sum();
@@ -59,23 +60,23 @@ namespace AQSystemSolver {
                 return addends.colwise().sum();
             }
             void resize(Eigen::Index rows, Eigen::Index cols){
-                coeffecients.resize(rows, cols);
+                coefficients.resize(rows, cols);
                 constants.resize(rows);
             }
             void conservativeResize(Eigen::Index rows, Eigen::Index cols){
-                coeffecients.conservativeResize(rows, cols);
+                coefficients.conservativeResize(rows, cols);
                 constants.conservativeResize(rows);
             }
 
             void substituteRowAndCol(const /*TableauType*/ auto& replacementTableau, Eigen::Index row, const /*TableauType*/ auto& originalTableau, Eigen::Index col){
-                coeffecients+=originalTableau.coeffecients.col(col)*replacementTableau.coeffecients.row(row); 
-                constants.array()*=pow(replacementTableau.constants.coeff(row), originalTableau.coeffecients.col(col).array());
+                coefficients+=originalTableau.coefficients.col(col)*replacementTableau.coefficients.row(row); 
+                constants.array()*=pow(replacementTableau.constants.coeff(row), originalTableau.coefficients.col(col).array());
             }
             Tableau reducedCopy(const auto& v1, const auto& v2) const {
-                return {coeffecients(v1, v2), constants(v1)};
+                return {coefficients(v1, v2), constants(v1)};
             }
             Tableau reducedCopy(const decltype(Eigen::all)& v1, const auto& v2) const {
-                return {coeffecients(v1, v2), constants};
+                return {coefficients(v1, v2), constants};
             }
     };
     template<typename MatrixType=Eigen::MatrixXd, typename VectorType=Eigen::VectorXd, typename RowVectorType=Eigen::RowVectorXd>
@@ -95,7 +96,7 @@ namespace AQSystemSolver {
             }
             void substituteRowAndCol(const /*TableauType*/ auto& replacementTableau, Eigen::Index row, const TableauWithTotals& originalTableau, Eigen::Index col) {
                 parent::substituteRowAndCol(replacementTableau, row, originalTableau, col);
-                total+=originalTableau.total.coeff(col)*replacementTableau.coeffecients.row(row);
+                total+=originalTableau.total.coeff(col)*replacementTableau.coefficients.row(row);
             }
             RowVectorType eval(const auto& x) const {
                 return parent::eval(x)-total;
@@ -110,53 +111,128 @@ namespace AQSystemSolver {
             }
     };
 
-    template<typename Matrix1, bool resize=true>
-    void removeRow(Eigen::Map<Matrix1>& matrix, Eigen::Index indexToRemove){
-        matrix(Eigen::seq(indexToRemove, Eigen::last-1), Eigen::all)=matrix(Eigen::seq(indexToRemove+1, Eigen::last), Eigen::all);
-        if(resize){
-            new (&matrix) decltype(matrix)(matrix.data(), matrix.rows()-1, matrix.cols());
-        }
-    }
-
-    template<typename Matrix1, bool resize=true>
-    void addRow(Eigen::Map<Matrix1>& matrix, Eigen::Index where){
-        if(resize){
-            new (&matrix) decltype(matrix)(matrix.data(), matrix.rows()+1, matrix.cols());
-        }
-        matrix(Eigen::seq(where+1, Eigen::last), Eigen::all)=matrix(Eigen::seq(where, Eigen::last-1), Eigen::all);
-    }
-    template<bool resize=true>
-    void addRow(auto& matrix, Eigen::Index indexToRemove){
-        if(resize){
-            matrix.conservativeResize(matrix.rows()+1, Eigen::NoChange);
-        }
-        matrix(Eigen::seq(indexToRemove+1, Eigen::last), Eigen::all)=matrix(Eigen::seq(indexToRemove, Eigen::last-1), Eigen::all);
-    }
-    template<bool resize=true>
-    void removeRow(auto& matrix, Eigen::Index where){
-        matrix(Eigen::seq(where, Eigen::last-1), Eigen::all)=matrix(Eigen::seq(where+1, Eigen::last), Eigen::all);
-        if(resize){
-            matrix.conservativeResize(matrix.rows()-1, Eigen::NoChange);
-        }
-    }
-
     struct Solid{
-        Eigen::Index solidIndex; //should be const but i want to allow move
-        Eigen::RowVectorXd row; //should be const but i want to allow move
-        double constant;//should be const but i want to allow move
-        Eigen::Index column;//should be const but i want to allow move
-        std::size_t hash=1<<solidIndex;
-        friend bool operator<(const Solid& solid1, const Solid& solid2){
-            return solid1.solidIndex<solid2.solidIndex;
+        const Eigen::Index solidIndex;
+        const Eigen::RowVectorXd row;
+        const double constant;
+        Eigen::Index column;
+        const std::size_t hash=1<<solidIndex;
+        template<typename RowType>
+        Solid(Eigen::Index solidIndex_, RowType&& row_, double constant_, Eigen::Index column_) : 
+        solidIndex{solidIndex_},
+        row{std::forward<RowType>(row_)},
+        constant{constant_},
+        column{column_}
+        {}
+    };
+
+    struct SolidCompare {
+        using is_transparent=void;
+        template<typename T, typename U>
+        typename std::enable_if_t<SM_utils::is_pointer_fancy_v<T> && SM_utils::is_pointer_fancy_v<U>, bool> 
+        operator()(const T& l, const U& r) const{
+            return l->solidIndex<r->solidIndex;
         }
-        operator Eigen::Index() const {
-            return solidIndex;
+        template<typename T>
+        typename std::enable_if_t<SM_utils::is_pointer_fancy_v<T>, bool> 
+        operator()(const T& l, Eigen::Index r) const {
+            return l->solidIndex<r;
+        }
+        template<typename U>
+        typename std::enable_if_t<SM_utils::is_pointer_fancy<U>::value, bool> 
+        operator()(Eigen::Index l, const U& r) const {
+            return l<r->solidIndex;
+        }
+        bool operator()(Eigen::Index l, Eigen::Index r) const{
+            return l<r;
         }
     };
-    struct SolidOwningSet : public SM_utils::flat_set<Solid>{
-        std::ptrdiff_t presenceIndexOf(const Solid& solid) const {
-            return &solid-SM_utils::flat_set<Solid>::data();
-        }
+    template<typename T>
+    class SolidIndexIndexer{
+        private:
+            const T& set;
+        public:
+            Eigen::Index operator[](std::size_t i) const {
+                return set[i]->solidIndex;
+            }
+            std::size_t size() const {
+                return set.size();
+            }
+            SolidIndexIndexer(const T& set_): set{set_} {}
+    };
+    template<typename T>
+    class ColumnIndexer{
+        private:
+            const T& set;
+        public:
+            Eigen::Index operator[](std::size_t i) const {
+                return set[i]->column;
+            }
+            std::size_t size() const {
+                return set.size();
+            }
+            ColumnIndexer(const T& set_): set{set_} {}
+    };
+    class SolidOwningSet {
+        private:
+            using set_type=SM_utils::flat_set<std::unique_ptr<Solid>, SolidCompare>;
+            using iterator_type=SM_utils::UnowningIterator<set_type::const_iterator>;
+            set_type flat_set;
+        public:
+            std::ptrdiff_t presenceIndexOf(const Solid* solid) const {
+                return std::distance(flat_set.begin(), flat_set.find(solid));
+            }
+            std::ptrdiff_t lower_bound_index(const Solid* solid) const {
+                return std::distance(flat_set.begin(), std::lower_bound(flat_set.begin(), flat_set.end(), solid, SolidCompare()));
+            }
+            template<typename U>
+            iterator_type find(const U& t) const {
+                return flat_set.find(t);
+            }
+            template<typename U>
+            set_type::iterator find_extract(const U& t){
+                return flat_set.find(t);
+            }
+            void insert(std::unique_ptr<Solid>&& in){
+                flat_set.insert(std::move(in));
+            }
+            template<typename... Args>
+            void emplace(Args&&... args){
+                flat_set.emplace(std::forward<Args>(args)...);
+            }
+            void erase(set_type::iterator it){
+                flat_set.erase(it);
+            }
+            SolidIndexIndexer<set_type> indexBySolidIndexes() const {
+                return {flat_set};
+            }
+            ColumnIndexer<set_type> indexByColumn() const {
+                return {flat_set};
+            }
+            Solid * get(Eigen::Index presenceIndex) {
+                return flat_set[presenceIndex].get();
+            }
+            const Solid * get(Eigen::Index presenceIndex) const {
+                return flat_set[presenceIndex].get();
+            }
+            std::size_t size() const {
+                return flat_set.size();
+            }
+            void reserve(std::size_t s){
+                flat_set.reserve(s);
+            }
+            iterator_type begin() const {
+                return {flat_set.begin()};
+            }
+            iterator_type begin() {
+                return {flat_set.begin()};
+            }
+            iterator_type end() const {
+                return {flat_set.end()};
+            }
+           iterator_type end() {
+                return {flat_set.end()};
+            }
     };
 
     class SolidSystem{
@@ -172,65 +248,70 @@ namespace AQSystemSolver {
 
         private:
             template<bool adding>
-            std::reference_wrapper<Solid> addOrRemove(Solid& solidBeingChanged){
-                auto& addingToContainer=adding ? solidsPresent : solidsNotPresent;
-                auto& removingFromContainer=!adding ? solidsPresent : solidsNotPresent;
+            void addOrRemove(Solid* solidBeingChanged){
+                SolidOwningSet& addingToContainer=adding ? solidsPresent : solidsNotPresent;
+                SolidOwningSet& removingFromContainer=!adding ? solidsPresent : solidsNotPresent;
 
-                const Eigen::Index fromRow=removingFromContainer.presenceIndexOf(solidBeingChanged);
-                const Eigen::Index toRow=std::distance(addingToContainer.begin(), std::lower_bound(addingToContainer.begin(), addingToContainer.end(), solidBeingChanged));
-                addingToContainer.insert(std::move(solidBeingChanged));
-                removingFromContainer.erase(solidBeingChanged); //invalidates solidBeingChanged
+                auto extractedSolidIterator=removingFromContainer.find_extract(solidBeingChanged);
+                addingToContainer.insert(std::move(*extractedSolidIterator));
+                removingFromContainer.erase(extractedSolidIterator);
                 if(adding){
                     ++numPresent;
                 } else {
                     --numPresent;
                 }
-                return addingToContainer[toRow];
             }
 
-            std::reference_wrapper<Solid> add(Solid& solidBeingChanged){
-                return addOrRemove<true>(solidBeingChanged);
+            void add(Solid* solidBeingChanged){
+                addOrRemove<true>(solidBeingChanged);
             }
-            std::reference_wrapper<Solid> remove(Solid& solidBeingChanged){
-                return addOrRemove<false>(solidBeingChanged);
+            void remove(Solid* solidBeingChanged){
+                addOrRemove<false>(solidBeingChanged);
             }
 
-            bool conditionallyAddHash(const Solid& solid){
-                const std::size_t newHash=currentCombinationHash^solid.hash;
-                return combinationsHash.insert(newHash).second && (currentCombinationHash=newHash, true);
+            bool conditionallyAddHash(const Solid* solid){
+                const std::size_t newHash=currentCombinationHash^(solid->hash);
+                if(combinationsHash.insert(newHash).second){
+                    currentCombinationHash=newHash;
+                    return true;
+                else {
+                    return false;
+                }
             }
         public:
-            std::optional<std::reference_wrapper<Solid>> conditionallyAdd(Solid& solid){
+            bool conditionallyAdd(Solid* solid){
                 if(conditionallyAddHash(solid)){
-                    return add(solid);
+                    add(solid);
+                    return true;
                 } else {
-                    return std::nullopt;
+                    return false;
                 }
             }
-            std::optional<std::reference_wrapper<Solid>> conditionallyRemove(Solid& solid){
+            bool conditionallyRemove(Solid* solid){
                 if(conditionallyAddHash(solid)){
-                    return remove(solid);
+                    remove(solid);
+                    return true;
                 } else {
-                    return std::nullopt;
+                    return false;
                 }
             }
 
-            Eigen::VectorXd calculateSolidAmts(const Eigen::RowVectorXd& leftOvers, const auto& solidColumns) const{
-                Eigen::MatrixXd solidAmtEqns(solidColumns.size(), numPresent);
-                for(const Solid& solid : solidsPresent){
-                    solidAmtEqns.col(solidsPresent.presenceIndexOf(solid))=solid.row(solidColumns).transpose();
+            Eigen::VectorXd calculateSolidAmts(const Eigen::RowVectorXd& leftOvers) const{
+                Eigen::MatrixXd solidAmtEqns(solidsPresent.size(), numPresent);
+                for(const Solid* solid : solidsPresent){
+                    solidAmtEqns.col(solidsPresent.presenceIndexOf(solid))=solid->row(solidsPresent.indexByColumn()).transpose();
                 }
-                const Eigen::VectorXd solidAmtLeftOver=leftOvers.transpose()(solidColumns);
+                const Eigen::VectorXd solidAmtLeftOver=leftOvers.transpose()(solidsPresent.indexByColumn());
                 return solidAmtEqns.partialPivLu().solve(solidAmtLeftOver);
             }
 
             struct SolidChangeAttempt {
                 bool success;
-                std::optional<std::reference_wrapper<Solid>> solid;
+                Solid* solid;
             };
             
             SolidChangeAttempt possiblyRemoveSolid(const Eigen::VectorXd& solidAmts){
-                std::optional<std::reference_wrapper<Solid>> solidNeedsToDisolve{std::nullopt};
+                Solid* solidNeedsToDisolve=nullptr;
                 //we use a heap cause we usually wont need the full sort
                 for(
                     auto indexHeap=SolidVectorHeapIndexCompare<std::greater<void>>(SM_utils::CountingIterator(0), SM_utils::CountingIterator(solidAmts.rows()), {solidAmts}); 
@@ -238,9 +319,9 @@ namespace AQSystemSolver {
                 ) {
                     if(solidAmts.coeff(iThSolidPresent)<0.0) [[unlikely]] {
                         //not const because if we remove the solid then we're changing it
-                        Solid& solid=solidsPresent[iThSolidPresent];
-                        if(auto newSolidRef=conditionallyRemove(solid); newSolidRef) [[likely]] {
-                            return {true, newSolidRef};
+                        Solid* solid=solidsPresent.get(iThSolidPresent);
+                        if(conditionallyRemove(solid)) [[likely]] {
+                            return {true, solid};
                         } else if(!solidNeedsToDisolve){
                             //std::cout<<"WARNING: EITHER NEARLY LOOPED OR GIBBS RULE FAILED (remove)"<<std::endl;
                             solidNeedsToDisolve=solid;
@@ -252,7 +333,7 @@ namespace AQSystemSolver {
                 return {false, solidNeedsToDisolve};
             }
             SolidChangeAttempt possiblyAddSolid(const Eigen::VectorXd& solubilityProducts){
-                std::optional<std::reference_wrapper<Solid>> solidNeedsToForm{std::nullopt};
+                Solid* solidNeedsToForm=nullptr;
                 for(
                     #ifndef NDEBUG
                         //sort the solids in the wrong order so that we are much more likely to trigger a removal
@@ -264,10 +345,9 @@ namespace AQSystemSolver {
                 ) {
 
                     if(solubilityProducts.coeff(iThSolidNotPresent)>1.0) [[likely]] { //the long running cases will have lots of solids being added
-                        Solid& solid=solidsNotPresent[iThSolidNotPresent];
-                        if(auto newSolidRef=conditionallyAdd(solid); newSolidRef) [[likely]] {
-                            //conditionally add invalidated our reference 
-                            return {true, newSolidRef};
+                        Solid* solid=solidsNotPresent.get(iThSolidNotPresent);
+                        if(conditionallyAdd(solid)) [[likely]] {
+                            return {true, solid};
                         } else if(!solidNeedsToForm){
                             //std::cout<<"WARNING: EITHER NEARLY LOOPED OR GIBBS RULE FAILED (add)"<<std::endl;
                             solidNeedsToForm=solid;
@@ -282,7 +362,8 @@ namespace AQSystemSolver {
                 return {false, solidNeedsToForm};
             }
 
-        SolidSystem(const Tableau<>& tableau_, const std::unordered_set<Eigen::Index> starting_solids):
+        template<typename SetType=std::unordered_set<Eigen::Index>>
+        SolidSystem(const Tableau<>& tableau_, const SetType& starting_solids):
             numPresent{0},
             size{tableau_.rows()},
             cols{tableau_.cols()},
@@ -296,9 +377,10 @@ namespace AQSystemSolver {
                 if(starting){
                     ++numPresent;
                     currentCombinationHash^=hash;
-                    solidsPresent.insert(Solid{i, tableau.coeffecients.row(i), tableau.constants.coeff(i), -1});
+                    solidsPresent.emplace(std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1));
                 } else {
-                    solidsNotPresent.insert(Solid{i, tableau.coeffecients.row(i), tableau.constants.coeff(i), -1});
+                    auto b=std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1);
+                    solidsNotPresent.emplace(std::make_unique<Solid>(i, tableau.coefficients.row(i), tableau.constants.coeff(i), -1));
                 }
             }
             combinationsHash.insert(currentCombinationHash);
@@ -320,12 +402,14 @@ namespace AQSystemSolver {
 
             void groupTerms(){
                 for(auto column : columns){
-                    auto& power=replacement.coeffecients.coeffRef(columnToRow[column], column);
+                    auto& power=replacement.coefficients.coeffRef(columnToRow[column], column);
                     if(power==0){
                         continue; //it won't do anything, so we skip it.
+                    } else if(power==1){
+                        throw std::runtime_error("Power is 1, we are trying to eliminate a replacement. This is probably a Gibbs Rule violation.");
                     }
                     double powerInv=1/(1-power);
-                    replacement.coeffecients.row(columnToRow[column])*=powerInv;
+                    replacement.coefficients.row(columnToRow[column])*=powerInv;
                     replacement.constants.coeffRef(columnToRow[column])=pow(replacement.constants.coeff(columnToRow[column]), powerInv);
                     power=0;
                 }
@@ -335,11 +419,11 @@ namespace AQSystemSolver {
                 bool replacedAnything=false;
                 const Tableau<> copyReplacement=replacement;
                 for(auto column : columns){
-                    if(std::any_of(SM_utils::NestingIterator(columnToRow, columns.begin()), SM_utils::NestingIterator(columnToRow, columns.end()), [&](Eigen::Index row) { return replacement.coeffecients.coeff(row, column)!=0; })) {
+                    if(std::any_of(SM_utils::NestingIterator(columnToRow, columns.begin()), SM_utils::NestingIterator(columnToRow, columns.end()), [&](Eigen::Index row) { return replacement.coefficients.coeff(row, column)!=0; })) {
                         //std::cout<<"replaced"<<std::endl<<std::endl;
                         replacedAnything=true;
                         replacement.substituteRowAndCol(copyReplacement, columnToRow[column], copyReplacement, column);
-                        replacement.coeffecients.col(column)-=copyReplacement.coeffecients.col(column);
+                        replacement.coefficients.col(column)-=copyReplacement.coefficients.col(column);
                     }
                 }
                 return replacedAnything;
@@ -366,7 +450,7 @@ namespace AQSystemSolver {
                     }
                 }
                 return replaced;
-            }            
+            }
             
             Eigen::Index size() const {
                 assert(static_cast<Eigen::Index>(columns.size())==replacement.rows());
@@ -390,10 +474,10 @@ namespace AQSystemSolver {
             void solveForTermAndAddToRow(const auto& rowVect, const double constant, const Eigen::Index term, const Eigen::Index row){
                 const double termPowerInverse=-1.0/rowVect.coeff(term);
 
-                unsimplifiedReplacement.coeffecients.row(row)=termPowerInverse*rowVect.array();
-                unsimplifiedReplacement.coeffecients.coeffRef(row, term)=0.0;
+                unsimplifiedReplacement.coefficients.row(row)=termPowerInverse*rowVect.array();
+                unsimplifiedReplacement.coefficients.coeffRef(row, term)=0.0;
                 unsimplifiedReplacement.constants.coeffRef(row)=pow(constant, termPowerInverse);
-                replacement.coeffecients.row(row)=unsimplifiedReplacement.coeffecients.row(row);
+                replacement.coefficients.row(row)=unsimplifiedReplacement.coefficients.row(row);
                 replacement.constants.coeffRef(row)=unsimplifiedReplacement.constants.coeff(row);
             }
             
@@ -405,73 +489,63 @@ namespace AQSystemSolver {
             unsimplifiedReplacement{replacement_},
             replacement{replacement_}
             {
+                Eigen::Index i{0};
                 for(const Eigen::Index column: columns_) {
-                    const Eigen::Index row=addColumn(column);
-                    solveForTermAndAddToRow(replacement_.coeffecients.row(row), replacement_.constants(row), column, row);
+                    const Eigen::Index row=addColumn(column); //this will start at 0 and increment up as there are no removals
+                    assert(replacement_.coefficients.coeff(i, column)!=0);
+                    solveForTermAndAddToRow(replacement_.coefficients.row(i), replacement_.constants(i), column, row);
+                    ++i;
                 }
                 simplifyFromUnsimplified();
             }
     };
 
-    class ReplacementDictWithSolids : public SimpleReplacementDict{
-        public:
-            SM_utils::flat_set<Eigen::Index> solidColumns; //flat set to allow eigen indexing from a set
-            SolidSystem solidSystem;
-            void addSolid(Solid& solid){
+    void addSolidToReplacementDict(SimpleReplacementDict& replacementDict, Solid* solid){
+        auto columnIt=std::find_if(replacementDict.columnsNotReplaced.begin(), replacementDict.columnsNotReplaced.end(), [&](Eigen::Index term){ return solid->row.coeff(term)!=0.0; });
+        if(columnIt==replacementDict.columnsNotReplaced.end()){
+            throw std::runtime_error("Couldn't find a clean column. This is probably a Gibbs Rule violation.");
+        }
+        const Eigen::Index column=*columnIt;
+        Eigen::Index row=replacementDict.addColumn(column);
+        solid->column=column;
+        replacementDict.solveForTermAndAddToRow(solid->row, solid->constant, column, row);        
+        //mostly already simplifed, just the last row, but we still have to iterate over all the columns
+        replacementDict.simplify();
+    }
+    void removeSolidFromReplacementDict(SimpleReplacementDict& replacementDict, Solid* solid){
+        replacementDict.removeColumn(solid->column);
 
-                //should just segfault if it can't find a row
-                //Eigen::Index term=*std::ranges::find_if(std::ranges::iota_view(0), [&](Eigen::Index term){ return solid.row.coeff(term)!=0.0 && !columns.contains(term); });
-                Eigen::Index term=*std::find_if(SM_utils::CountingIterator(0), SM_utils::CountingIterator(numColumns), [&](Eigen::Index term){ return solid.row.coeff(term)!=0.0 && !columns.contains(term); });
-                
-                Eigen::Index row=addColumn(term);
+        solid->column=-1;
 
-                solid.column=term;
-                solidColumns.insert(solid.column);
+        //TODO We should probably be able to plug it back into all our equations and then resimplify, but sounds hard and I know this works
+        replacementDict.simplifyFromUnsimplified();
+    }
 
-                solveForTermAndAddToRow(solid.row, solid.constant, term, row);
-                
-                //mostly already simplifed, just the last row, but we still have to iterate over all the columns
-                simplify();
-            }
-            SolidSystem::SolidChangeAttempt possiblyAddSolid(const Eigen::VectorXd& solubilityProducts){
-                const SolidSystem::SolidChangeAttempt addAttempt=solidSystem.possiblyAddSolid(solubilityProducts);
-                if(addAttempt.success) [[likely]] {
-                    addSolid(*addAttempt.solid);
-                }
-                return addAttempt;
-            }
-            void removeSolid(Solid& solid){
-                removeColumn(solid.column);
+    void addSolidSystemToReplacementDict(SimpleReplacementDict& replacementDict, const SolidSystem& solidSystem){
+        Eigen::Index numColumns=replacementDict.numColumns;
+        assert(numColumns==solidSystem.tableau.cols());
+        replacementDict.replacement.conservativeResize(replacementDict.replacement.rows()+solidSystem.size, numColumns);
+        replacementDict.unsimplifiedReplacement.conservativeResize(replacementDict.replacement.rows()+solidSystem.size, numColumns);
+        for(Solid * solid : solidSystem.solidsPresent) {
+            addSolidToReplacementDict(replacementDict, solid);
+        }
+        replacementDict.simplifyFromUnsimplified();
+    }
 
-                solidColumns.erase(solid.column);
-
-                //TODO We should probably be able to plug it back into all our equations and then resimplify, but sounds hard and I know this works
-                simplifyFromUnsimplified();
-            }
-            SolidSystem::SolidChangeAttempt possiblyRemoveSolid(const Eigen::VectorXd& solidAmts){
-                const SolidSystem::SolidChangeAttempt removeAttempt=solidSystem.possiblyRemoveSolid(solidAmts);
-                if(removeAttempt.success) [[unlikely]] {
-                    removeSolid(*removeAttempt.solid);
-                }
-                return removeAttempt;
-            }
-
-
-            ReplacementDictWithSolids(const SimpleReplacementDict& origReplacementDict, const SolidSystem& solidSystem_) : 
-            SimpleReplacementDict{origReplacementDict},
-            solidSystem{solidSystem_}
-            {
-                //think of this as a reserve() call
-                replacement.conservativeResize(origReplacementDict.replacement.rows()+solidSystem.size, numColumns);
-                unsimplifiedReplacement.conservativeResize(origReplacementDict.replacement.rows()+solidSystem.size, numColumns);
-
-
-                for(auto& solid : solidSystem.solidsPresent) {
-                    addSolid(solid);
-                }
-                simplifyFromUnsimplified();
-            }
-    };
+    SolidSystem::SolidChangeAttempt possiblyAddSolid(const Eigen::VectorXd& solubilityProducts, SimpleReplacementDict& replacementDict, SolidSystem& solidSystem){
+        const SolidSystem::SolidChangeAttempt addAttempt=solidSystem.possiblyAddSolid(solubilityProducts);
+        if(addAttempt.success) [[likely]] {
+            addSolidToReplacementDict(replacementDict, addAttempt.solid);
+        }
+        return addAttempt;
+    }
+    SolidSystem::SolidChangeAttempt possiblyRemoveSolid(const Eigen::VectorXd& solidAmts, SimpleReplacementDict& replacementDict, SolidSystem& solidSystem){
+        const SolidSystem::SolidChangeAttempt removeAttempt=solidSystem.possiblyRemoveSolid(solidAmts);
+        if(removeAttempt.success) [[unlikely]] {
+            removeSolidFromReplacementDict(replacementDict, removeAttempt.solid);
+        }
+        return removeAttempt;
+    }
 
     std::pair<Eigen::RowVectorXd, Eigen::VectorXd> solveWithReplacement(const TableauWithTotals<>& replacedTableau) {
         
@@ -484,7 +558,7 @@ namespace AQSystemSolver {
             const Eigen::RowVectorXd maxAddend=abs(addends.array()).colwise().maxCoeff();
 
             //x^c*c/x=(x^c)'
-            const Eigen::MatrixXd jacobian=addends.transpose()*(replacedTableau.coeffecients.array().rowwise()/currentSolution.array()).matrix();
+            const Eigen::MatrixXd jacobian=addends.transpose()*(replacedTableau.coefficients.array().rowwise()/currentSolution.array()).matrix();
 
             const Eigen::RowVectorXd yResult=replacedTableau.eval(addends);
 
@@ -500,7 +574,7 @@ namespace AQSystemSolver {
 
             currentSolution-=delta;
         }
-        throw std::runtime_error("failure to converge");
+        throw std::runtime_error("Failed to converge");
     }
 
      struct SolidPresent{
@@ -564,18 +638,20 @@ namespace AQSystemSolver {
         Eigen::VectorXd solubilityProducts;
         Eigen::VectorXd solidAmts;
 
+        SimpleReplacementDict replacementDict{origReplacementDict};
+        SolidSystem solidSystem{initialSolidSystem.tableau, initialSolidSystem.solidsPresent};
+        addSolidSystemToReplacementDict(replacementDict, solidSystem);
 
-        ReplacementDictWithSolids replacementDictWithSolids{origReplacementDict, initialSolidSystem};
 
         for(;;){
-            const auto currentReplacedTableau=replacementDictWithSolids.createReplacedTableau(tableau);
+            const auto currentReplacedTableau=replacementDict.createReplacedTableau(tableau);
             if(currentReplacedTableau.cols()){
                 std::tie(currentSolution, speciesConcentrations)=solveWithReplacement(currentReplacedTableau);
             } else {
                 currentSolution=Eigen::VectorXd(0);
                 speciesConcentrations=currentReplacedTableau.constants;
             }
-            const auto solidsNotHereTableau=replacementDictWithSolids.createReplacedTableau(replacementDictWithSolids.solidSystem.tableau.reducedCopy(replacementDictWithSolids.solidSystem.solidsNotPresent, Eigen::all));
+            const auto solidsNotHereTableau=replacementDict.createReplacedTableau(solidSystem.tableau.reducedCopy(solidSystem.solidsNotPresent.indexBySolidIndexes(), Eigen::all));
             assert(solidsNotHereTableau.cols()==currentReplacedTableau.cols());
             if(currentReplacedTableau.cols()){
                 solubilityProducts=solidsNotHereTableau.evalTerms(currentSolution);
@@ -583,15 +659,13 @@ namespace AQSystemSolver {
                 solubilityProducts=solidsNotHereTableau.constants;
             }
 
-            //std::cout<<speciesConcentrations<<std::endl<<std::endl;
+            solidAmts=solidSystem.calculateSolidAmts(-tableau.eval(speciesConcentrations)); 
 
-            solidAmts=replacementDictWithSolids.solidSystem.calculateSolidAmts(-tableau.eval(speciesConcentrations), replacementDictWithSolids.solidColumns); 
-
-            SolidSystem::SolidChangeAttempt removalAttempt=replacementDictWithSolids.possiblyRemoveSolid(solidAmts);
+            SolidSystem::SolidChangeAttempt removalAttempt=possiblyRemoveSolid(solidAmts, replacementDict, solidSystem);
             if(removalAttempt.success) {
                 continue;
             }
-            SolidSystem::SolidChangeAttempt addAttempt=replacementDictWithSolids.possiblyAddSolid(solubilityProducts);
+            SolidSystem::SolidChangeAttempt addAttempt=possiblyAddSolid(solubilityProducts, replacementDict, solidSystem);
             if(addAttempt.success) {
                 continue;
             }
@@ -609,16 +683,16 @@ namespace AQSystemSolver {
             break;
         }
         std::vector<SolidPresent> solidsPresent;
-        for(const auto& solidPresent: replacementDictWithSolids.solidSystem.solidsPresent){
-            solidsPresent.push_back({solidPresent.solidIndex, solidAmts.coeff(replacementDictWithSolids.solidSystem.solidsPresent.presenceIndexOf(solidPresent))});
+        for(const Solid * solidPresent: solidSystem.solidsPresent){
+            solidsPresent.push_back({solidPresent->solidIndex, solidAmts.coeff(solidSystem.solidsPresent.presenceIndexOf(solidPresent))});
         }
         std::vector<SolidNotPresent> solidsNotPresent;
-        for(const auto& solidNotPresent: replacementDictWithSolids.solidSystem.solidsNotPresent){
-            solidsNotPresent.push_back({solidNotPresent.solidIndex, solubilityProducts.coeff(replacementDictWithSolids.solidSystem.solidsNotPresent.presenceIndexOf(solidNotPresent))});
+        for(const Solid * solidNotPresent: solidSystem.solidsNotPresent){
+            solidsNotPresent.push_back({solidNotPresent->solidIndex, solubilityProducts.coeff(solidSystem.solidsNotPresent.presenceIndexOf(solidNotPresent))});
         }
         return {
-            tableau, initialSolidSystem, origReplacementDict,
-            static_cast<SimpleReplacementDict>(replacementDictWithSolids), std::move(currentSolution),
+            tableau, {initialSolidSystem.tableau, initialSolidSystem.solidsPresent}, origReplacementDict,
+            replacementDict, std::move(currentSolution),
             std::move(speciesConcentrations),
             {solidsPresent.begin(), solidsPresent.end()},
             {solidsNotPresent.begin(), solidsNotPresent.end()},

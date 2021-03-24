@@ -18,24 +18,27 @@ namespace SM_utils{
     using numeric=T;
     //concept numeric=std::integral<T> || std::floating_point<T>;
 
-    template<typename T>
+    template<typename T, typename Compare=std::less<T>>
     class flat_set {
         private:
             std::vector<T> vect;
+            const Compare compare={};
         public:
-            typename std::vector<T>::iterator begin(){
+            using iterator=typename std::vector<T>::iterator;
+            using const_iterator=typename std::vector<T>::const_iterator;
+            iterator begin(){
                 return vect.begin();
             }
-            typename std::vector<T>::const_iterator begin() const {
+            const_iterator begin() const {
                 return vect.begin();
             }
             auto cbegin() const {
                 return vect.cbegin();
             }
-            typename std::vector<T>::iterator end(){
+            iterator end(){
                 return vect.end();
             }
-            typename std::vector<T>::const_iterator end() const {
+            const_iterator end() const {
                 return vect.end();
             }
             auto cend() const {
@@ -53,34 +56,103 @@ namespace SM_utils{
             const T& operator[](std::size_t i) const {
                 return vect[i];
             }
-            auto size() const {
+            std::size_t size() const {
                 return vect.size();
             }
-            auto reserve(std::size_t s){
-                return vect.reserve(s);
+            void reserve(std::size_t s){
+                vect.reserve(s);
+            }
+            template<typename... Args>
+            void emplace(Args&&... args){
+                T t(std::forward<Args>(args)...);
+                vect.insert(std::lower_bound(vect.begin(), vect.end(), t, compare), std::move(t));
             }
             void insert(T&& t) {
-                vect.insert(std::lower_bound(vect.begin(), vect.end(), t), std::move(t));
+                vect.insert(std::lower_bound(vect.begin(), vect.end(), t, compare), std::move(t));
             }
             void insert(const T& t) {
-                vect.insert(std::lower_bound(vect.begin(), vect.end(), t), t);
+                vect.insert(std::lower_bound(vect.begin(), vect.end(), t, compare), t);
             }
             void erase(const T& t) {
-                vect.erase(std::lower_bound(vect.begin(), vect.end(), t));
+                vect.erase(std::lower_bound(vect.begin(), vect.end(), t, compare));
             }
-            typename std::vector<T>::iterator find(const T& t) {
-                return std::lower_bound(vect.begin(), vect.end());
+            void erase(iterator t) {
+                vect.erase(t);
             }
-            typename std::vector<T>::const_iterator find(const T& t) const {
-                return std::lower_bound(vect.begin(), vect.end());
+            void erase(const_iterator t) {
+                vect.erase(t);
+            }
+            template<typename U>
+            iterator find(const U& t) {
+                const auto ret = std::lower_bound(vect.begin(), vect.end(), t, compare);
+                if(ret!=vect.end() && !compare(*ret, t) && !compare(t, *ret)){
+                    return ret;
+                } else {
+                    return vect.end();
+                }
+            }
+            template<typename U>
+            const_iterator find(const U& t) const {
+                const auto ret = std::lower_bound(vect.begin(), vect.end(), t, compare);
+                if(ret!=vect.end() && !compare(*ret, t) && !compare(t, *ret)){
+                    return ret;
+                } else {
+                    return vect.end();
+                }
             }
             bool contains(const T& t) const{
-                return std::binary_search(vect.begin(), vect.end(), t);
+                return std::binary_search(vect.begin(), vect.end(), t, compare);
             }
-            flat_set(auto begin, auto end): vect(begin, end) {}
             flat_set()=default;
-
+            flat_set(auto begin, auto end): vect(begin, end) {}
     };
+
+    template<typename T, typename Enable = std::void_t<>>
+    struct is_pointer_fancy : std::false_type {};
+    
+    template<class T>
+    struct is_pointer_fancy<T, std::void_t<typename T::element_type>> : std::true_type {};
+
+    template<class T>
+    struct is_pointer_fancy<T*> : std::true_type {}; 
+
+    template<typename T>
+    constexpr inline bool is_pointer_fancy_v=is_pointer_fancy<T>::value;
+
+    template<typename OriginalIterator>
+    class UnowningIterator {
+        using pointer = typename OriginalIterator::value_type::element_type**;
+        using value_type = typename OriginalIterator::value_type::element_type*;
+        using reference = typename OriginalIterator::value_type::element_type*;
+        using difference_type = typename OriginalIterator::difference_type;
+        using iterator_category = typename OriginalIterator::iterator_category;
+        private:
+            OriginalIterator inner_it;
+        public:
+            value_type operator*() const{
+                return inner_it->get();
+            }
+            UnowningIterator operator++(){
+                return ++inner_it;
+            }
+            UnowningIterator operator++(int){
+                return inner_it++;
+            }
+            UnowningIterator operator+(std::size_t rhs){
+                return inner_it+=rhs;
+            }
+            UnowningIterator operator-(std::size_t rhs){
+                return inner_it-=rhs;
+            }
+            std::ptrdiff_t operator-(const UnowningIterator& rhs){
+                return inner_it-rhs.inner_it;
+            }
+            bool operator!=(const UnowningIterator& rhs) const{
+                return inner_it!=rhs.inner_it;
+            }
+            UnowningIterator(OriginalIterator inner_it_): inner_it{inner_it_} {}
+    };
+
     template</*std::ranges::random_access_range*/typename ContainerType, /*std::forward_iterator*/typename iterator>
     class NestingIterator: public iterator{
         public:
@@ -207,10 +279,10 @@ namespace SM_utils{
     template</*std::ranges::random_access_range*/typename ContainerType, typename Compare, /*std::integral*/typename IndexType>
     struct IndexCompare{
         const ContainerType& container;
-        const Compare comp=Compare();
+        const Compare compare={};
         IndexCompare(const ContainerType& container_) : container{container_} { }
         bool operator()(IndexType a, IndexType b) const{
-            return comp(container[a], container[b]);
+            return compare(container[a], container[b]);
         }
     };
 
@@ -226,7 +298,7 @@ namespace SM_utils{
     template <typename T, template <typename...> class C>
     using is_base_of_template = decltype(is_base_of_template_impl<C>(std::declval<T*>()));
 
-    void print(const auto& v){
+    void print_vect(const auto& v){
         for(const auto& elem : v){
             std::cout<<elem<<" ";
         }
