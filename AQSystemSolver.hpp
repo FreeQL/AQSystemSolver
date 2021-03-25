@@ -153,18 +153,22 @@ namespace AQSystemSolver {
             return l<r;
         }
     };
-    template<typename T>
+    template<typename T, typename... Args>
     class SolidIndexIndexer{
     private:
-        const T& set;
+        const SM_utils::flat_set<T, Args...>& set;
     public:
         Eigen::Index operator[](std::size_t i) const {
-            return set[i]->solidIndex;
+            if constexpr(SM_utils::is_pointer_fancy_v<T>){
+                return set[i]->solidIndex;
+            } else {
+                return set[i].solidIndex;
+            }
         }
         std::size_t size() const {
             return set.size();
         }
-        SolidIndexIndexer(const T& set_): set{set_} {}
+        explicit SolidIndexIndexer(const SM_utils::flat_set<T, Args...>& set_): set{set_} {}
     };
     template<typename T>
     class ColumnIndexer{
@@ -177,7 +181,7 @@ namespace AQSystemSolver {
         std::size_t size() const {
             return set.size();
         }
-        ColumnIndexer(const T& set_): set{set_} {}
+        explicit ColumnIndexer(const T& set_): set{set_} {}
     };
     class SolidOwningSet {
     private:
@@ -209,11 +213,11 @@ namespace AQSystemSolver {
         void erase(set_type::iterator it){
             flat_set.erase(it);
         }
-        SolidIndexIndexer<set_type> indexBySolidIndexes() const {
-            return {flat_set};
+        auto indexBySolidIndexes() const {
+            return SolidIndexIndexer{flat_set};
         }
-        ColumnIndexer<set_type> indexByColumn() const {
-            return {flat_set};
+        auto indexByColumn() const {
+            return ColumnIndexer{flat_set};
         }
         Solid * get(Eigen::Index presenceIndex) {
             return flat_set[presenceIndex].get();
@@ -615,9 +619,6 @@ namespace AQSystemSolver {
         friend bool operator<(const SolidPresent& solid1, const SolidPresent& solid2){
             return solid1.solidIndex<solid2.solidIndex;
         }
-        operator Eigen::Index() const {
-            return solidIndex;
-        }
 
         SolidPresent(Eigen::Index solidIndex_, double concentration_) : 
         solidIndex{solidIndex_},
@@ -630,9 +631,6 @@ namespace AQSystemSolver {
 
         friend bool operator<(const SolidNotPresent& solid1, const SolidNotPresent& solid2){
             return solid1.solidIndex<solid2.solidIndex;
-        }
-        operator Eigen::Index() const {
-            return solidIndex;
         }
         SolidNotPresent(Eigen::Index solidIndex_, double solubilityProduct_) : 
         solidIndex{solidIndex_},
@@ -664,7 +662,7 @@ namespace AQSystemSolver {
                     ++concIt;
                 }
             }
-            totalConcentrations+=solidsTableau.reducedCopy(solidsPresent, Eigen::all).eval(solidConcentrations);
+            totalConcentrations+=solidsTableau.reducedCopy(SolidIndexIndexer{solidsPresent}, Eigen::all).eval(solidConcentrations);
             return totalConcentrations;
         }
         Eigen::VectorXd getExtraSolubilityProducts(const Tableau<>& extraSolids) const {
