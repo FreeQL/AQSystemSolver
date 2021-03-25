@@ -107,34 +107,6 @@ namespace SM_utils{
             flat_set(auto begin, auto end): vect(begin, end) {}
     };
 
-    template<typename T>
-    class copy_pointer {
-        private:
-            T* raw;
-        public:
-            T* get(){
-                return raw;
-            }
-            const T* get() const {
-                return raw;
-            }
-            copy_pointer(T* raw_) noexcept{
-                raw=raw_;
-            }
-            copy_pointer(const copy_pointer& rhs) noexcept(T(*raw)){
-                raw=new T(*rhs.raw);
-            }
-            copy_pointer(copy_pointer&& rhs) noexcept {
-                raw=rhs.raw;
-                rhs.raw=nullptr;
-            }
-            ~copy_pointer() noexcept {
-                if(raw){
-                    delete raw;
-                }
-            }
-    };
-
     template<typename T, typename Enable = std::void_t<>>
     struct is_pointer_fancy : std::false_type {};
     
@@ -157,7 +129,10 @@ namespace SM_utils{
         private:
             OriginalIterator inner_it;
         public:
-            value_type operator*() const{
+            value_type operator*() {
+                return inner_it->get();
+            }
+            const value_type& operator*() const {
                 return inner_it->get();
             }
             UnowningIterator operator++(){
@@ -166,10 +141,10 @@ namespace SM_utils{
             UnowningIterator operator++(int){
                 return inner_it++;
             }
-            UnowningIterator operator+(std::size_t rhs){
+            UnowningIterator& operator+(std::size_t rhs){
                 return inner_it+=rhs;
             }
-            UnowningIterator operator-(std::size_t rhs){
+            UnowningIterator& operator-(std::size_t rhs){
                 return inner_it-=rhs;
             }
             std::ptrdiff_t operator-(const UnowningIterator& rhs){
@@ -209,7 +184,7 @@ namespace SM_utils{
             ContainerType& container;
         public:
             ConsumingIterator(ContainerType& container_) : container{container_} {}
-            typename ContainerType::value_type operator*() const {
+            const typename ContainerType::value_type& operator*() const {
                 return container.top();
             }
             void operator++(){
@@ -244,7 +219,7 @@ namespace SM_utils{
             T max;
             std::priority_queue<T, std::vector<T>, std::greater<T>> reinserted;
         public:
-            T top() const {
+            const T& top() const {
                 if(reinserted.empty()){
                     return max;
                 } else {
@@ -258,7 +233,7 @@ namespace SM_utils{
                     reinserted.pop();
                 }
             }
-            void push(T value){
+            void push(const T& value){
                 assert(value<max);
                 reinserted.push(value);
             }
