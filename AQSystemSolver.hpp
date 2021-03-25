@@ -563,14 +563,14 @@ namespace AQSystemSolver {
         }
     };
 
-    SolidSystem::SolidChangeAttempt possiblyAddSolid(const Eigen::VectorXd& solubilityProducts, ReplacementDict& replacementDict, SolidSystem& solidSystem){
+    inline SolidSystem::SolidChangeAttempt possiblyAddSolid(const Eigen::VectorXd& solubilityProducts, ReplacementDict& replacementDict, SolidSystem& solidSystem){
         const SolidSystem::SolidChangeAttempt addAttempt=solidSystem.possiblyAddSolid(solubilityProducts);
         if(addAttempt.success) [[likely]] {
             replacementDict.addSolid(addAttempt.solid);
         }
         return addAttempt;
     }
-    SolidSystem::SolidChangeAttempt possiblyRemoveSolid(const Eigen::VectorXd& solidAmts, ReplacementDict& replacementDict, SolidSystem& solidSystem){
+    inline SolidSystem::SolidChangeAttempt possiblyRemoveSolid(const Eigen::VectorXd& solidAmts, ReplacementDict& replacementDict, SolidSystem& solidSystem){
         const SolidSystem::SolidChangeAttempt removeAttempt=solidSystem.possiblyRemoveSolid(solidAmts);
         if(removeAttempt.success) [[unlikely]] {
             replacementDict.removeSolid(removeAttempt.solid);
@@ -578,7 +578,7 @@ namespace AQSystemSolver {
         return removeAttempt;
     }
 
-    std::pair<Eigen::RowVectorXd, Eigen::VectorXd> solveWithReplacement(const TableauWithTotals<>& replacedTableau) {
+    inline std::pair<Eigen::RowVectorXd, Eigen::VectorXd> solveWithReplacement(const TableauWithTotals<>& replacedTableau) {
         
         Eigen::RowVectorXd currentSolution=Eigen::RowVectorXd::Constant(replacedTableau.cols(), 1e-5);
         for(std::size_t iter=0; iter<30; ++iter){
@@ -692,7 +692,7 @@ namespace AQSystemSolver {
         }
     };
 
-    Equilibrium solveForEquilibrium(const TableauWithTotals<>& tableau, const SolidSystem& initialSolidSystem, const ReplacementDict& origReplacementDict){
+    inline Equilibrium solveForEquilibrium(const TableauWithTotals<>& tableau, const SolidSystem& initialSolidSystem, const ReplacementDict& origReplacementDict){
         Eigen::RowVectorXd currentSolution;
         Eigen::VectorXd speciesConcentrations;
         Eigen::VectorXd solubilityProducts;
