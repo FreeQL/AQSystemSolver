@@ -50,6 +50,9 @@ namespace AQSystemSolver{
         [[nodiscard]] const auto& getSolidsNotPresent() const {
             return solidsNotPresent;
         }
+        [[nodiscard]] const auto& cols() const {
+            return tableau.cols();
+        }
 
         //this is useful a) to know error and b) to get the totals if you have a replacement
         [[nodiscard]] Eigen::RowVectorXd getTotalConcentrations() const {

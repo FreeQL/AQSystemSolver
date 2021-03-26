@@ -300,9 +300,9 @@ namespace AQSystemSolver {
                 if(starting){
                     ++numPresent;
                     currentCombinationHash^=hash;
-                    solidsPresent.emplace(std::unique_ptr<Solid>(new Solid(i, tableau.getCoefficients().row(i), tableau.getConstant(i), -1)));
+                    solidsPresent.emplace(std::unique_ptr<Solid>(new Solid{i, tableau.getCoefficients().row(i), tableau.getConstant(i), -1}));
                 } else {
-                    solidsNotPresent.emplace(std::unique_ptr<Solid>(new Solid(i, tableau.getCoefficients().row(i), tableau.getConstant(i), -1)));
+                    solidsNotPresent.emplace(std::unique_ptr<Solid>(new Solid{i, tableau.getCoefficients().row(i), tableau.getConstant(i), -1}));
                 }
             }
             combinationsHash.insert(currentCombinationHash);
