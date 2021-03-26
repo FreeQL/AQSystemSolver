@@ -26,37 +26,37 @@ namespace SM_utils{
     public:
         using iterator=typename std::vector<T>::iterator;
         using const_iterator=typename std::vector<T>::const_iterator;
-        iterator begin(){
+        [[nodiscard]] auto begin(){
             return vect.begin();
         }
-        const_iterator begin() const {
+        [[nodiscard]] auto begin() const {
             return vect.begin();
         }
-        auto cbegin() const {
+        [[nodiscard]] auto cbegin() const {
             return vect.cbegin();
         }
-        iterator end(){
+        [[nodiscard]] auto end(){
             return vect.end();
         }
-        const_iterator end() const {
+        [[nodiscard]] auto end() const {
             return vect.end();
         }
-        auto cend() const {
+        [[nodiscard]] auto cend() const {
             return vect.cend();
         }
-        T* data(){
+        [[nodiscard]] auto data(){
             return vect.data();
         }
-        const T* data() const {
+        [[nodiscard]] auto data() const {
             return vect.data();
         }
-        T& operator[](std::size_t i){
+        [[nodiscard]] auto& operator[](std::size_t i) {
             return vect[i];
         }
-        const T& operator[](std::size_t i) const {
+        [[nodiscard]] const auto& operator[](std::size_t i) const {
             return vect[i];
         }
-        std::size_t size() const {
+        [[nodiscard]] auto size() const {
             return vect.size();
         }
         void reserve(std::size_t s){
@@ -83,24 +83,22 @@ namespace SM_utils{
             vect.erase(t);
         }
         template<typename U>
-        iterator find(const U& t) {
+        [[nodiscard]] auto find(const U& t) {
             const auto ret = std::lower_bound(vect.begin(), vect.end(), t, compare);
             if(ret!=vect.end() && !compare(*ret, t) && !compare(t, *ret)){
                 return ret;
-            } else {
-                return vect.end();
             }
+            return vect.end();
         }
         template<typename U>
-        const_iterator find(const U& t) const {
+        [[nodiscard]] auto find(const U& t) const {
             const auto ret = std::lower_bound(vect.begin(), vect.end(), t, compare);
             if(ret!=vect.end() && !compare(*ret, t) && !compare(t, *ret)){
                 return ret;
-            } else {
-                return vect.end();
             }
+            return vect.end();
         }
-        bool contains(const T& t) const{
+        [[nodiscard]] auto contains(const T& t) const{
             return std::binary_search(vect.begin(), vect.end(), t, compare);
         }
         flat_set()=default;
@@ -108,13 +106,16 @@ namespace SM_utils{
     };
 
     template<typename T, typename Enable = std::void_t<>>
-    struct is_pointer_fancy : std::false_type {};
+    struct is_pointer_fancy_impl : std::false_type {};
     
-    template<class T>
-    struct is_pointer_fancy<T, std::void_t<typename T::element_type>> : std::true_type {};
+    template<typename T>
+    struct is_pointer_fancy_impl<T, std::void_t<typename T::element_type>> : std::true_type {};
 
-    template<class T>
-    struct is_pointer_fancy<T*> : std::true_type {}; 
+    template<typename T>
+    struct is_pointer_fancy_impl<T*> : std::true_type {}; 
+
+    template<typename T>
+    struct is_pointer_fancy : is_pointer_fancy_impl<std::decay_t<T>> {};
 
     template<typename T>
     constexpr inline bool is_pointer_fancy_v=is_pointer_fancy<T>::value;
@@ -129,31 +130,28 @@ namespace SM_utils{
         using iterator_category = typename OriginalIterator::iterator_category;
         OriginalIterator inner_it;
     public:
-        value_type operator*() {
+        [[nodiscard]] value_type operator*() const  {
             return inner_it->get();
         }
-        const value_type& operator*() const {
-            return inner_it->get();
+        auto operator++() {
+            return UnowningIterator{++inner_it};
         }
-        UnowningIterator operator++(){
-            return ++inner_it;
+        auto operator++(int) & {
+            return UnowningIterator{inner_it++};
         }
-        UnowningIterator operator++(int){
-            return inner_it++;
+        auto operator+(std::size_t rhs) {
+            return UnowningIterator{inner_it+rhs};
         }
-        UnowningIterator& operator+(std::size_t rhs){
-            return inner_it+=rhs;
+        auto operator-(std::size_t rhs) {
+            return UnowningIterator{inner_it-rhs};
         }
-        UnowningIterator& operator-(std::size_t rhs){
-            return inner_it-=rhs;
-        }
-        std::ptrdiff_t operator-(const UnowningIterator& rhs){
+        [[nodiscard]] difference_type operator-(const UnowningIterator& rhs) const {
             return inner_it-rhs.inner_it;
         }
-        bool operator!=(const UnowningIterator& rhs) const{
+        [[nodiscard]] bool operator!=(const UnowningIterator& rhs) const {
             return inner_it!=rhs.inner_it;
         }
-        UnowningIterator(OriginalIterator inner_it_): inner_it{inner_it_} {}
+        explicit UnowningIterator(OriginalIterator inner_it_): inner_it{inner_it_} {}
     };
 
     template</*std::ranges::random_access_range*/typename ContainerType, /*std::forward_iterator*/typename iterator>
@@ -167,7 +165,10 @@ namespace SM_utils{
     private:
         ContainerType& outerArray;
     public:
-        typename ContainerType::value_type operator*() const {
+        [[nodiscard]] auto& operator*() {
+            return outerArray[iterator::operator*()];
+        }
+        [[nodiscard]] const auto& operator*() const {
             return outerArray[iterator::operator*()];
         }
         NestingIterator(ContainerType& outerArray_, iterator currentLocation) : 
@@ -183,14 +184,14 @@ namespace SM_utils{
     private:
         ContainerType& container;
     public:
-        ConsumingIterator(ContainerType& container_) : container{container_} {}
-        const typename ContainerType::value_type& operator*() const {
+        explicit ConsumingIterator(ContainerType& container_) : container{container_} {}
+        [[nodiscard]] auto operator*() const {
             return container.top();
         }
         void operator++(){
             return container.pop();
         }
-        bool operator!=([[maybe_unused]] ConsumingIterator<ContainerType>& end) const {
+        [[nodiscard]] bool operator!=([[maybe_unused]] ConsumingIterator<ContainerType>& end) const {
             return container.size();
         }
     };
@@ -201,14 +202,14 @@ namespace SM_utils{
     private:
         ContainerType& container;
     public:
-        ConsumingRange(ContainerType& container_) : container{container_} { }
+        explicit ConsumingRange(ContainerType& container_) : container{container_} { }
         
-        ConsumingIterator<ContainerType> begin() const {
-            return {container};
+        [[nodiscard]] auto begin() const {
+            return ConsumingIterator<ContainerType>{container};
         }
 
-        ConsumingIterator<ContainerType> end() const {
-            return {container};
+        [[nodiscard]] auto end() const {
+            return ConsumingIterator<ContainerType>{container};
         }
     };
 
@@ -219,12 +220,11 @@ namespace SM_utils{
         T max;
         std::priority_queue<T, std::vector<T>, std::greater<T>> reinserted;
     public:
-        const T& top() const {
+        [[nodiscard]] const auto& top() const {
             if(reinserted.empty()){
                 return max;
-            } else {
-                return reinserted.top();
             }
+            return reinserted.top();
         }
         void pop(){
             if(reinserted.empty()){
@@ -237,7 +237,7 @@ namespace SM_utils{
             assert(value<max);
             reinserted.push(value);
         }
-        IncreasingPQ(T starting) : max{starting} {}
+        explicit IncreasingPQ(T starting) : max{starting} {}
     };
 
 
@@ -258,34 +258,35 @@ namespace SM_utils{
         void operator--(){
             --value;
         };
-        CountingIterator operator+(const std::size_t val){
-            return CountingIterator(value+val);
+        [[nodiscard]] auto operator+(const std::size_t val) const {
+            return CountingIterator{value+val};
         };
-        void operator+=(const std::size_t val){
+        void operator+=(const std::size_t val) {
             value+=val;
         };
-        difference_type operator-(const CountingIterator& rhs){
+        [[nodiscard]] difference_type operator-(const CountingIterator& rhs) const{
             return value-rhs.value;
         }
-        bool operator==(CountingIterator const& it) const {
+        [[nodiscard]] bool operator==(CountingIterator const& it) const {
             return value==it.value;
         }
-        bool operator!=(CountingIterator const& it) const {
+        [[nodiscard]] bool operator!=(CountingIterator const& it) const {
             //std::cout<<value<<" "<<it.value<<std::endl;
             return value!=it.value;
         }
-        std::size_t operator*() const {
+        [[nodiscard]] value_type operator*() const {
             return value;
         }
     };
 
-    template</*std::ranges::random_access_range*/typename ContainerType, typename Compare, /*std::integral*/typename IndexType>
+    template</*std::ranges::random_access_range*/typename ContainerType, typename Compare=std::less<>, /*std::integral*/typename IndexType=std::size_t>
     class IndexCompare{
-    public:
+    private:
         const ContainerType& container;
         const Compare compare={};
-        IndexCompare(const ContainerType& container_) : container{container_} { }
-        bool operator()(IndexType a, IndexType b) const{
+    public:
+        explicit IndexCompare(const ContainerType& container_) : container{container_} { }
+        [[nodiscard]] auto operator()(IndexType a, IndexType b) const{
             return compare(container[a], container[b]);
         }
     };
@@ -301,5 +302,10 @@ namespace SM_utils{
 
     template <typename T, template <typename...> class C>
     using is_base_of_template = decltype(is_base_of_template_impl<C>(std::declval<T*>()));
-    
-}
+
+    #ifdef NDEBUG
+        inline constexpr bool debug=false;
+    #else 
+        inline constexpr bool debug=true;
+    #endif
+} // namespace SM_utils
