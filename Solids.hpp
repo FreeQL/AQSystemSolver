@@ -25,6 +25,13 @@ namespace AQSystemSolver {
         const Eigen::RowVectorXd row;
         const double constant;
         Eigen::Index column;
+
+        Solid(Eigen::Index solidIndex_, Eigen::RowVectorXd row_, double constant_, Eigen::Index column_) : 
+        solidIndex{solidIndex_},
+        row{std::move(row_)},
+        constant{constant_},
+        column{column_}
+        {}
     };
 
     struct SolidCompare {

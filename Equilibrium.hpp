@@ -50,7 +50,7 @@ namespace AQSystemSolver{
         [[nodiscard]] const auto& getSolidsNotPresent() const {
             return solidsNotPresent;
         }
-        [[nodiscard]] const auto& cols() const {
+        [[nodiscard]] auto cols() const {
             return tableau.cols();
         }
 
